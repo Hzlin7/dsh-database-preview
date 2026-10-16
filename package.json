@@ -1,0 +1,66 @@
+{
+  "name": "dsh-database-preview",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Read-only database preview for DeepSeek Harness: browse SQLite files, MySQL/MariaDB, PostgreSQL and SQL Server inside the right Sidebar.",
+  "keywords": [
+    "deepseek",
+    "deepseek-harness",
+    "dsh",
+    "database",
+    "sqlite",
+    "mysql",
+    "postgresql",
+    "sqlserver",
+    "plugin"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=22.5"
+  },
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test tests/host.test.mjs tests/plugin.test.mjs tests/ui.test.mjs",
+    "sample": "node examples/make-sample.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-sidebar-right",
+        "@deepseek-ai/dsh-client-locale"
+      ]
+    }
+  },
+  "dependencies": {
+    "mssql": "^11.0.1",
+    "mysql2": "^3.11.5",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.2",
+    "jsdom": "^30.1.2",
+    "react": "^18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0"
+  }
+}

@@ -1,0 +1,8 @@
+# dsh-database-preview bundle patch: mounts this plugin into a profile's layer stack.
+#
+# The row id is the key a user overrides in their profile's cordis.patch.yml; the row name is
+# the module this package exports, so the two deliberately differ (DSH's plugin card prints
+# both, and an id equal to the name renders the same string twice).
+- insert:
+    - id: database-preview
+      name: 'dsh-database-preview'

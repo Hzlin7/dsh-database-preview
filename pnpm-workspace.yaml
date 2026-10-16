@@ -1,0 +1,7 @@
+# pnpm 11 records dependency build-script decisions here.
+#
+# esbuild's postinstall only verifies the platform binary that its optional
+# dependency already installed, so allowing it keeps `pnpm install` quiet and
+# self-checking. Nothing else in this package runs a build script.
+allowBuilds:
+  esbuild: true
