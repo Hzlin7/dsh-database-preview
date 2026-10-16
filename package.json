@@ -45,6 +45,10 @@
     "test": "node --test tests/host.test.mjs tests/plugin.test.mjs tests/ui.test.mjs",
     "sample": "node examples/make-sample.mjs"
   },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
