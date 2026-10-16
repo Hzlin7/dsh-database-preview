@@ -18,6 +18,40 @@ const PAGE_SIZES = [50, 100, 200, 500]
 /** The views a table can be shown in; also the values of the view dropdown. */
 const VIEWS = ['rows', 'structure']
 
+/**
+ * The width a column falls back to when the rendered one cannot be measured —
+ * a panel that is not laid out yet, or a DOM that performs no layout at all.
+ */
+const COLUMN_FALLBACK_WIDTH = 160
+
+/** The narrowest a column may be dragged, so its own grip stays reachable. */
+const MIN_COLUMN_WIDTH = 48
+
+/** How far one arrow key moves a focused grip. */
+const COLUMN_KEY_STEP = 16
+
+/** Round and clamp a requested column width. */
+function columnWidth(value) {
+  return Math.max(MIN_COLUMN_WIDTH, Math.round(value))
+}
+
+/**
+ * Start or stop pointer capture, on shells that implement it.
+ *
+ * Capture is what keeps a fast drag tracking after the pointer leaves the few
+ * pixels of the grip; a shell without it is not an error, the drag then simply
+ * follows the pointer only while it stays over the grip.
+ */
+function capturePointer(element, pointerId, on) {
+  const method = on ? element.setPointerCapture : element.releasePointerCapture
+  if (typeof method !== 'function') return
+  try {
+    method.call(element, pointerId)
+  } catch {
+    // A refused capture costs nothing but the tracking described above.
+  }
+}
+
 /** Render one cell's value, marking nulls and binary values. */
 function Cell({ value, t }) {
   if (value === null || value === undefined) return <span className={`${PREFIX}-null`}>{t('browse.nullValue')}</span>
@@ -80,6 +114,13 @@ export function DatabaseBrowser({ target, t, onBack }) {
   const [detail, setDetail] = React.useState({ status: 'idle' })
   const [view, setView] = React.useState('rows')
   const [token, setToken] = React.useState(0)
+  /** Column widths in pixels, by column name, for the table on screen. */
+  const [widths, setWidths] = React.useState({})
+  /** The column whose grip is being dragged, or null. */
+  const [resizing, setResizing] = React.useState(null)
+  const gridRef = React.useRef(null)
+  /** The drag in flight: the column, the pointer's start, and its seeded widths. */
+  const dragRef = React.useRef(null)
 
   // The descriptor is a stable identity for the target, so a re-render does not refetch.
   const descriptor = React.useMemo(
@@ -148,6 +189,91 @@ export function DatabaseBrowser({ target, t, onBack }) {
 
   const databases = catalog.status === 'ready' ? (catalog.data.databases ?? []) : []
   const schemas = catalog.status === 'ready' ? (catalog.data.schemas ?? []) : []
+  const columns = detail.status === 'ready' ? (detail.data.columns ?? []) : []
+
+  // A different table means different columns, so widths never carry over. The
+  // updaters return the identical value when there is nothing to clear, which is
+  // the common case, so mounting this does not cost an extra render.
+  React.useEffect(() => {
+    dragRef.current = null
+    setWidths((current) => (Object.keys(current).length === 0 ? current : {}))
+    setResizing((current) => (current === null ? current : null))
+  }, [descriptor, database, schema, table])
+
+  // A grid is only laid out from declared widths once every column has one:
+  // a partly declared table hands the rest an equal share of what is left
+  // instead of their content width.
+  const sized = columns.length > 0 && columns.every((column) => widths[column.name] !== undefined)
+  const gridWidth = sized ? columns.reduce((total, column) => total + widths[column.name], 0) : undefined
+
+  /**
+   * Every column's width, with the untouched ones measured from the header.
+   *
+   * Seeding all of them before the first drag is what makes the switch to a
+   * declared layout invisible: the measured widths are exactly the ones content
+   * layout had already chosen, so nothing moves until the pointer does.
+   */
+  const seedWidths = () => {
+    const cells = gridRef.current === null ? [] : [...gridRef.current.querySelectorAll('thead th')]
+    const next = {}
+    columns.forEach((column, index) => {
+      const measured = cells[index]?.getBoundingClientRect().width ?? 0
+      next[column.name] = widths[column.name] ?? columnWidth(measured || COLUMN_FALLBACK_WIDTH)
+    })
+    return next
+  }
+
+  /**
+   * Wire one column's grip.
+   *
+   * The drag is read from the session snapshot rather than from the running
+   * state, so every move measures the same pointer delta and rounding cannot
+   * accumulate over a long drag.
+   */
+  const gripProps = (name) => ({
+    role: 'separator',
+    tabIndex: 0,
+    'aria-orientation': 'vertical',
+    'aria-label': t('browse.resizeColumn', { column: name }),
+    title: t('browse.resizeHint'),
+    onPointerDown: (event) => {
+      if (event.button !== 0) return
+      const start = seedWidths()
+      // Cancelling the default is what keeps a drag from painting a selection;
+      // it also suppresses the focus a mousedown would have given the grip, so
+      // the grip takes it back — the arrow keys belong to a grip that was just
+      // clicked, not only to one that was tabbed to.
+      event.preventDefault()
+      event.currentTarget.focus({ preventScroll: true })
+      capturePointer(event.currentTarget, event.pointerId, true)
+      dragRef.current = { name, x: event.clientX, widths: start }
+      setWidths(start)
+      setResizing(name)
+    },
+    onPointerMove: (event) => {
+      const session = dragRef.current
+      if (session === null || session.name !== name) return
+      setWidths({ ...session.widths, [name]: columnWidth(session.widths[name] + (event.clientX - session.x)) })
+    },
+    onPointerUp: (event) => {
+      if (dragRef.current === null) return
+      capturePointer(event.currentTarget, event.pointerId, false)
+      dragRef.current = null
+      setResizing(null)
+    },
+    onLostPointerCapture: () => {
+      if (dragRef.current === null) return
+      dragRef.current = null
+      setResizing(null)
+    },
+    onKeyDown: (event) => {
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+      event.preventDefault()
+      const start = seedWidths()
+      const step = event.key === 'ArrowRight' ? COLUMN_KEY_STEP : -COLUMN_KEY_STEP
+      setWidths({ ...start, [name]: columnWidth(start[name] + step) })
+    },
+  })
 
   return (
     <div className={`${PREFIX}-root`}>
@@ -301,15 +427,32 @@ export function DatabaseBrowser({ target, t, onBack }) {
 
               {detail.data.truncated === true ? <div className={`${PREFIX}-notice`}>{t('browse.truncated')}</div> : null}
 
-              <div className={`${PREFIX}-scroll`}>
+              <div className={`${PREFIX}-scroll${resizing === null ? '' : ` ${PREFIX}-resizing`}`}>
                 {view === 'rows' ? (
-                  <table className={`${PREFIX}-grid`}>
+                  <table
+                    ref={gridRef}
+                    className={`${PREFIX}-grid${sized ? ` ${PREFIX}-gridSized` : ''}`}
+                    style={sized ? { tableLayout: 'fixed', width: gridWidth, minWidth: '100%' } : undefined}
+                  >
+                    {/* Declared widths replace content layout, and the columns
+                        still fill the pane: the table may not shrink below it. */}
+                    {sized ? (
+                      <colgroup>
+                        {columns.map((column) => (
+                          <col key={column.name} style={{ width: widths[column.name] }} />
+                        ))}
+                      </colgroup>
+                    ) : null}
                     <thead>
                       <tr>
-                        {(detail.data.columns ?? []).map((column) => (
-                          <th key={column.name} title={`${column.name} · ${column.type}`}>
+                        {columns.map((column) => (
+                          <th key={column.name} className={`${PREFIX}-th`} title={`${column.name} · ${column.type}`}>
                             {column.name}
                             {column.primaryKey ? <span className={`${PREFIX}-pk`}>PK</span> : null}
+                            <span
+                              className={`${PREFIX}-grip${resizing === column.name ? ` ${PREFIX}-gripActive` : ''}`}
+                              {...gripProps(column.name)}
+                            />
                           </th>
                         ))}
                       </tr>
@@ -317,7 +460,7 @@ export function DatabaseBrowser({ target, t, onBack }) {
                     <tbody>
                       {(detail.data.rows ?? []).length === 0 ? (
                         <tr>
-                          <td colSpan={Math.max(1, (detail.data.columns ?? []).length)} className={`${PREFIX}-muted`}>
+                          <td colSpan={Math.max(1, columns.length)} className={`${PREFIX}-muted`}>
                             {t('browse.emptyTable')}
                           </td>
                         </tr>
@@ -348,7 +491,7 @@ export function DatabaseBrowser({ target, t, onBack }) {
                         </tr>
                       </thead>
                       <tbody>
-                        {(detail.data.columns ?? []).map((column) => (
+                        {columns.map((column) => (
                           <tr key={column.name}>
                             <td>{column.name}</td>
                             <td>{column.type}</td>

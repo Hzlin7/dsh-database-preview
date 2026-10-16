@@ -364,6 +364,75 @@ test('a long table list is one select with no filter field, and the grid fills t
   await act(async () => root.unmount())
 })
 
+test('a header grip resizes its own column, and only that one', async () => {
+  const payloads = { 'db.catalog': CATALOG, 'db.table': TABLE }
+  stubFetch(payloads)
+  const { body, useTabInfo } = fileBodyFor('dsh-resource://file/session/s/data/shop.db')
+  const root = await render(React.createElement(body, { useTabInfo, t }))
+
+  const grips = [...container.querySelectorAll(`.${PREFIX}-grip`)]
+  assert.equal(grips.length, 3, 'every data column offers a grip')
+  assert.equal(
+    container.querySelector(`.${PREFIX}-gridSized`),
+    null,
+    'an untouched grid still takes its column widths from their content',
+  )
+
+  const widths = () => [...container.querySelectorAll('colgroup col')].map((node) => node.style.width)
+  const drag = (target, type, clientX) =>
+    target.dispatchEvent(new dom.window.PointerEvent(type, { bubbles: true, cancelable: true, clientX }))
+
+  // jsdom performs no layout, so every column is seeded from the fallback width
+  // and the drag's delta is the only thing these assertions can see.
+  await act(async () => drag(grips[1], 'pointerdown', 100))
+  const table = container.querySelector(`.${PREFIX}-gridSized`)
+  assert.ok(table !== null, 'the first drag switches the grid to declared widths')
+  assert.equal(table.style.tableLayout, 'fixed', 'declared widths need a fixed layout to be obeyed')
+  assert.deepEqual(widths(), ['160px', '160px', '160px'], 'a column that was not dragged keeps its width')
+  assert.notEqual(container.querySelector(`.${PREFIX}-resizing`), null, 'the pane holds the column cursor')
+  assert.notEqual(container.querySelector(`.${PREFIX}-gripActive`), null, 'the dragged grip is marked')
+
+  await act(async () => drag(grips[1], 'pointermove', 260))
+  assert.deepEqual(widths(), ['160px', '320px', '160px'], 'only the dragged column moves')
+  assert.equal(table.style.width, '640px', 'the grid is as wide as its columns')
+  assert.equal(table.style.minWidth, '100%', 'and never narrower than the pane')
+
+  await act(async () => drag(grips[1], 'pointerup', 260))
+  assert.equal(container.querySelector(`.${PREFIX}-resizing`), null, 'the drag is over')
+  await act(async () => drag(grips[1], 'pointermove', 600))
+  assert.deepEqual(widths(), ['160px', '320px', '160px'], 'a move after the release changes nothing')
+
+  // The grip is a separator with a keyboard, not only a pointer target.
+  assert.equal(grips[0].getAttribute('role'), 'separator')
+  assert.equal(grips[0].getAttribute('tabindex'), '0')
+  assert.equal(dom.window.document.activeElement, grips[1], 'the dragged grip takes focus, so the arrow keys land on it')
+  await act(async () => {
+    grips[0].dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
+  })
+  assert.deepEqual(widths(), ['176px', '320px', '160px'], 'an arrow key nudges the column')
+
+  // A column cannot be dragged shut: below this width its own grip would be gone.
+  await act(async () => drag(grips[1], 'pointerdown', 300))
+  await act(async () => drag(grips[1], 'pointermove', -900))
+  await act(async () => drag(grips[1], 'pointerup', -900))
+  assert.deepEqual(widths(), ['176px', '48px', '160px'], 'the narrowest column is the one still resizable')
+
+  // Another table has its own columns, which must not inherit a width by name.
+  payloads['db.table'] = { ...TABLE, table: 'orders', columns: [TABLE.columns[0]] }
+  const tableSelect = [...container.querySelectorAll('select')].find((node) =>
+    [...node.options].some((option) => option.value === 'orders'),
+  )
+  await act(async () => {
+    setNativeValue(tableSelect, 'orders')
+    tableSelect.dispatchEvent(new dom.window.Event('change', { bubbles: true }))
+  })
+  await act(async () => {})
+  assert.equal(container.querySelector(`.${PREFIX}-gridSized`), null, 'the next table starts from its own content widths')
+  assert.equal(container.querySelectorAll(`.${PREFIX}-grip`).length, 1, 'and offers one grip per column of its own')
+
+  await act(async () => root.unmount())
+})
+
 /**
  * A stand-in for `@deepseek-ai/dsh-client-ui-primitives`, which exists only
  * inside the browser kernel and cannot be loaded here. Handing the loader a

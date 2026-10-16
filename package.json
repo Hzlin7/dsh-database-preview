@@ -1,6 +1,6 @@
 {
   "name": "dsh-database-preview",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Read-only database preview for DeepSeek Harness: browse SQLite files, MySQL/MariaDB, PostgreSQL and SQL Server inside the right Sidebar.",
   "keywords": [
     "deepseek",

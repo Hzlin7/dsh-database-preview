@@ -1,5 +1,7 @@
 # dsh-database-preview
 
+[![npm version](https://img.shields.io/npm/v/dsh-database-preview)](https://www.npmjs.com/package/dsh-database-preview)
+
 DeepSeek Harness 的数据库**只读预览**插件：在右侧边栏的文件预览面板里浏览 SQLite / MySQL / PostgreSQL / SQL Server 的表、数据与结构，**从不写库**。
 
 ## 功能
@@ -9,6 +11,7 @@ DeepSeek Harness 的数据库**只读预览**插件：在右侧边栏的文件�
 | 引擎 | SQLite（`node:sqlite`，零依赖）、MySQL / MariaDB、PostgreSQL、SQL Server |
 | 表与视图 | 列出当前库 / 模式下的表与视图 |
 | 数据 | 分页预览，每页 50 / 100 / 200 / 500 行 |
+| 列宽 | 拖表头右缘调整，方向键微调（最近的 48px 为止）；列宽只属于当前这张表，换表即回到按内容排版。拖到总宽小于面板时，多出的空间按比例回填，表格仍撑满面板 |
 | 结构 | 列名、类型、可空、默认值、主键标记 |
 | 索引 | 索引名、是否唯一、包含列 |
 | 值呈现 | `NULL` 灰斜体；BLOB 显示十六进制前缀与字节数；超出 `Number.MAX_SAFE_INTEGER` 的整数保持字符串精度 |
@@ -27,7 +30,7 @@ DeepSeek Harness 的数据库**只读预览**插件：在右侧边栏的文件�
 ## 安装
 
 ```powershell
-# 从 npm（发布后可用）
+# 从 npm
 dsh plugin --profile <profile> add dsh-database-preview
 
 # 或直接从 GitHub，无需发布
@@ -56,18 +59,6 @@ dsh plugin --profile <profile> add mssql
 ```
 
 缺少驱动时不会被静默忽略，错误信息会点名：`the "mssql" driver is not available to this plugin: …`。
-
-## 自更新
-
-插件**不重写自己的文件**。它有运行时依赖，版本之间依赖树可能变化，那种更新必须走真正的包管理器安装；而 profile 的 `package.json` / `pnpm-lock.yaml` 属于插件管理器，不该由插件代写。
-
-所以更新是**委托**的：
-
-- **装了 `dshmarket`** → 在插件页里点「检查更新 / 更新到 vX」。实际安装由 [dshmarket 的公开更新 API v1](https://github.com/dsh-market/dsh-market) 执行，它会先发现（`/dsh-market/api/v1/capabilities`）、再检查、再启动操作并回报进度、失败码与回滚。该 API 目前标记为 **beta**。
-- **没装 `dshmarket`** → 面板给出确切的一条命令（`dsh plugin --profile <profile> add dsh-database-preview`），或者你按老办法卸载重装。
-- **`link:` 安装** → 面板明确拒绝一键更新。它指向你自己的源码目录，改写那里等于改你的工作副本；那种安装的更新方式是 `git pull` + 重新构建。
-
-面板还区分**运行中版本**与**磁盘版本**：更新替换的是磁盘文件，而内存里跑的仍是旧代码，所以更新完成后会显示「待重启」而不是假装已经生效。
 
 ## 连接信息与密码
 
@@ -110,7 +101,7 @@ dsh plugin --profile <profile> add mssql
 ```powershell
 pnpm install
 pnpm run build      # src/ -> lib/（客户端半打成模块加载器工厂包）
-pnpm test           # 39 项：宿主逻辑 / 更新判定 / 两个入口的接线 / 真实 DOM 渲染
+pnpm test           # 40 项：宿主逻辑 / 更新判定 / 两个入口的接线 / 真实 DOM 渲染
 pnpm run sample     # 生成 examples/shop.db 用于手动验证
 ```
 

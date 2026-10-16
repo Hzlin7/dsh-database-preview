@@ -234,6 +234,52 @@ export const STYLES = `
 .${PREFIX}-null { color: var(--dsw-alias-label-tertiary); font-style: italic; }
 .${PREFIX}-blob { color: var(--dsw-alias-label-secondary); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 
+/* ---------- column resizing ----------
+   A grip rides the right edge of every header cell of the data view. The header
+   is sticky, so it is already a containing block for an absolutely positioned
+   child, and its own overflow cannot clip the grip: the grip sits inside the
+   padding box. The header keeps a little more right padding than the body cells
+   so the text never runs under the grip. The selector carries the grid class
+   because the cell rule above is more specific than a bare class would be. */
+.${PREFIX}-grid .${PREFIX}-th { padding-right: 16px; }
+.${PREFIX}-grip {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: col-resize;
+  touch-action: none;
+}
+/* The bar appears on hover and for as long as its own drag lasts — a target that
+   is invisible until it is needed, but not invisible while in use. */
+.${PREFIX}-grip::before {
+  content: '';
+  position: absolute;
+  top: 3px;
+  right: 2px;
+  bottom: 3px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--dsw-alias-state-business-primary);
+  opacity: 0;
+  transition: opacity .12s ease;
+}
+.${PREFIX}-grip:hover::before,
+.${PREFIX}-gripActive::before { opacity: 1; }
+.${PREFIX}-grip:focus-visible {
+  outline: none;
+  box-shadow: inset -2px 0 0 var(--dsw-alias-state-business-primary);
+}
+/* While a drag is in flight the column cursor holds everywhere and the rows stop
+   selecting text, so a drag that wanders off the grip cannot paint a selection. */
+.${PREFIX}-resizing { cursor: col-resize; user-select: none; }
+/* A grid laid out from declared widths is bounded by them, so the content cap
+   that keeps an auto-laid-out table from growing without bound no longer
+   applies — and it would clamp a deliberate drag. */
+.${PREFIX}-gridSized th,
+.${PREFIX}-gridSized td { max-width: none; }
+
 /* ---------- the connection list ---------- */
 .${PREFIX}-list { display: flex; flex-direction: column; gap: 8px; padding: 12px; }
 .${PREFIX}-card {
