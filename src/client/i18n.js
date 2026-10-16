@@ -84,6 +84,35 @@ export const zh = {
   'browse.details': '详细信息',
   'error.title': '读取失败',
   'error.load': '无法读取数据库：{message}',
+  'update.title': '数据库预览',
+  'update.checking': '正在检查…',
+  'update.available': '有新版本 v{version}',
+  'update.upToDate': '已是最新版本',
+  'update.registryUnknownShort': 'npm 上查不到',
+  'update.unknown': '未知',
+  'update.failed': '更新失败：{message}',
+  'update.installed': '已更新到 v{version}，重启 DSH 后生效。',
+  'update.running': '运行中版本',
+  'update.kindLink': 'link: 安装',
+  'update.kindCopy': '已安装副本',
+  'update.pendingRestartTag': '待重启',
+  'update.check': '检查更新',
+  'update.applying': '正在更新…',
+  'update.apply': '更新到 v{version}',
+  'update.latest': '最新版本',
+  'update.notPublished': 'npm 上还没有这个包。发布之后才能在这里检查更新。',
+  'update.registryUnknown': '读不到 npm registry：{reason}',
+  'update.state.queued': '排队中…',
+  'update.state.running': '正在更新…',
+  'update.state.succeeded': '更新完成',
+  'update.state.failed': '更新失败',
+  'update.state.cancelled': '已取消',
+  'update.state.rolled-back': '已回滚',
+  'update.pendingRestartBody': '磁盘上已是 v{version}，但当前进程运行的仍是旧代码，重启 DSH 后才生效。',
+  'update.marketMissing': '未安装 dshmarket，无法一键更新。可直接执行：{command}',
+  'update.marketMissingLink': '在插件页卸载后重新安装',
+  'update.linkInstall': '这是 link: 安装，指向你的源码目录。更新请在自己的仓库里 git pull 并重新构建。',
+  'update.viaMarket': '更新由 dshmarket 的公开更新 API 执行（该 API 目前标记为 beta）。',
 }
 
 /** English dictionary. */
@@ -159,6 +188,35 @@ export const en = {
   'browse.details': 'Details',
   'error.title': 'Could not read',
   'error.load': 'Could not read the database: {message}',
+  'update.title': 'Database preview',
+  'update.checking': 'Checking…',
+  'update.available': 'Version {version} is available',
+  'update.upToDate': 'Up to date',
+  'update.registryUnknownShort': 'not on npm',
+  'update.unknown': 'unknown',
+  'update.failed': 'Update failed: {message}',
+  'update.installed': 'Updated to v{version}. Restart DSH to apply it.',
+  'update.running': 'Running version',
+  'update.kindLink': 'link: install',
+  'update.kindCopy': 'installed copy',
+  'update.pendingRestartTag': 'restart to apply',
+  'update.check': 'Check for updates',
+  'update.applying': 'Updating…',
+  'update.apply': 'Update to v{version}',
+  'update.latest': 'Latest version',
+  'update.notPublished': 'This package is not on npm yet. Publishing it is what makes an update checkable here.',
+  'update.registryUnknown': 'Could not reach the npm registry: {reason}',
+  'update.state.queued': 'Queued…',
+  'update.state.running': 'Updating…',
+  'update.state.succeeded': 'Update finished',
+  'update.state.failed': 'Update failed',
+  'update.state.cancelled': 'Cancelled',
+  'update.state.rolled-back': 'Rolled back',
+  'update.pendingRestartBody': 'The files on disk are already v{version}, but this process still runs the old code. Restart DSH to apply it.',
+  'update.marketMissing': 'dshmarket is not installed, so the one-click update is unavailable. Run: {command}',
+  'update.marketMissingLink': 'uninstall and reinstall it from the plugin page',
+  'update.linkInstall': 'This is a link: install pointing at your own checkout. Update it with git pull and a rebuild in your repository.',
+  'update.viaMarket': "The update runs through dshmarket's public update API, which is currently marked beta.",
 }
 
 /** The dictionaries this plugin registers. */
@@ -211,5 +269,41 @@ export function createTranslator(service) {
     const dictionary = browserDictionary()
     const template = dictionary?.[key] ?? en[key] ?? key
     return params === undefined ? template : format(template, params)
+  }
+}
+
+/**
+ * The translator the whole client half shares.
+ *
+ * It lives here rather than in the entry module so every component reads copy
+ * through one path: the entry installs it once during `apply`, and a component
+ * that never ran still gets the browser-language fallback.
+ */
+let shared = createTranslator(undefined)
+
+/**
+ * Install the translator built from the client's locale service.
+ * @param service - `ctx.locale`, when available.
+ * @returns the translator, for callers that need it immediately.
+ */
+export function setTranslator(service) {
+  shared = createTranslator(service)
+  return shared
+}
+
+/**
+ * The translator a component should use.
+ *
+ * The slot framework may pass its own `t`, which follows a language change; it
+ * is preferred when it actually resolves, and the shared one answers otherwise.
+ * @param props - the component's props.
+ * @returns the translate function.
+ */
+export function copyFor(props) {
+  const injected = props?.t
+  if (typeof injected !== 'function') return shared
+  return (key, params) => {
+    const resolved = injected(key, params)
+    return typeof resolved === 'string' && resolved !== '' && resolved !== key ? resolved : shared(key, params)
   }
 }

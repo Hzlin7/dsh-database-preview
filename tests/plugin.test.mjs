@@ -94,16 +94,25 @@ test('the client half claims the database file suffixes and contributes a guide 
   assert.equal(typeof connectionsType.guide[0].order, 'number', 'guide entries are ordered by a number')
   assert.equal(connectionsType.guide[0].id, 'database-connections')
 
-  assert.equal(slots.length, 2)
+  // Two right-Sidebar tab bodies plus this bundle's own page in the plugin
+  // manager. The page registers under the same key value as the file body —
+  // keyed slots scope keys to the slot — so the assertions match on slot and key.
+  assert.equal(slots.length, 3)
   assert.deepEqual(
-    slots.map((entry) => entry.definition.key).sort(),
-    ['dsh-database-preview', 'dsh-database-preview/connections'],
+    slots.map((entry) => `${entry.definition.name}:${entry.definition.key}`).sort(),
+    ['plugins.bundle.config:dsh-database-preview', 'sidebar.right.pane.tab:dsh-database-preview', 'sidebar.right.pane.tab:dsh-database-preview/connections'],
   )
   for (const entry of slots) {
-    assert.equal(entry.definition.name, 'sidebar.right.pane.tab')
     assert.equal(entry.definition.locale, 'databasePreview')
     assert.equal(typeof entry.body, 'function')
   }
+  for (const entry of slots.filter((candidate) => candidate.definition.name === 'sidebar.right.pane.tab')) {
+    assert.equal(typeof entry.definition.key, 'string')
+  }
+
+  const pluginPage = slots.find((entry) => entry.definition.name === 'plugins.bundle.config')
+  assert.equal(pluginPage.definition.key, 'dsh-database-preview', 'the plugin page is keyed by the bundle package name')
+  assert.equal(typeof pluginPage.definition.label, 'function', 'the plugin list needs a display name')
 })
 
 test('the file body parses its tab address into a Session target', async () => {
@@ -111,7 +120,7 @@ test('the file body parses its tab address into a Session target', async () => {
   const { ctx, slots } = makeClientContext()
   plugin.apply(ctx)
 
-  const fileBody = slots.find((entry) => entry.definition.key === 'dsh-database-preview').body
+  const fileBody = slots.find((entry) => entry.definition.name === 'sidebar.right.pane.tab' && entry.definition.key === 'dsh-database-preview').body
   const element = fileBody({ useTabInfo: () => ({ tab: { contentId: 'dsh-resource://file/session/session-9/data/shop.db' } }) })
   assert.equal(typeof element.type, 'function')
   assert.equal(element.props.address, 'dsh-resource://file/session/session-9/data/shop.db')
@@ -123,7 +132,7 @@ test('the file body refuses an address it cannot resolve instead of guessing', a
   const { ctx, slots } = makeClientContext()
   plugin.apply(ctx)
 
-  const fileBody = slots.find((entry) => entry.definition.key === 'dsh-database-preview').body
+  const fileBody = slots.find((entry) => entry.definition.name === 'sidebar.right.pane.tab' && entry.definition.key === 'dsh-database-preview').body
   const element = fileBody({ useTabInfo: () => ({ tab: { contentId: 'https://example.com/not-a-file' } }) })
   // FilePage renders the explanatory notice rather than a browser.
   assert.equal(typeof element.type, 'function')
@@ -136,7 +145,7 @@ test('the connections body renders the connection page', async () => {
   const { ctx, slots } = makeClientContext()
   plugin.apply(ctx)
 
-  const body = slots.find((entry) => entry.definition.key === 'dsh-database-preview/connections').body
+  const body = slots.find((entry) => entry.definition.name === 'sidebar.right.pane.tab' && entry.definition.key === 'dsh-database-preview/connections').body
   const element = body({ useTabInfo: () => ({ tab: { contentId: 'dsh-sidebar-right://page/database-connections' } }) })
   assert.equal(typeof element.type, 'function')
 })

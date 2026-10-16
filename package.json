@@ -1,12 +1,12 @@
 {
   "name": "dsh-database-preview",
   "version": "0.1.0",
-  "private": true,
   "description": "Read-only database preview for DeepSeek Harness: browse SQLite files, MySQL/MariaDB, PostgreSQL and SQL Server inside the right Sidebar.",
   "keywords": [
     "deepseek",
     "deepseek-harness",
     "dsh",
+    "dsh-plugin",
     "database",
     "sqlite",
     "mysql",
@@ -15,6 +15,14 @@
     "plugin"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Hzlin7/dsh-database-preview.git"
+  },
+  "homepage": "https://github.com/Hzlin7/dsh-database-preview",
+  "bugs": {
+    "url": "https://github.com/Hzlin7/dsh-database-preview/issues"
+  },
   "type": "module",
   "engines": {
     "node": ">=22.5"
@@ -50,17 +58,23 @@
     }
   },
   "dependencies": {
-    "mssql": "^11.0.1",
     "mysql2": "^3.11.5",
     "pg": "^8.13.1"
   },
   "devDependencies": {
     "esbuild": "^0.24.2",
     "jsdom": "^30.1.2",
+    "mssql": "^11.0.1",
     "react": "^18.3.1",
     "react-dom": "18.3.1"
   },
   "peerDependencies": {
-    "react": "^18.0.0"
+    "react": "^18.0.0",
+    "mssql": "^11.0.1"
+  },
+  "peerDependenciesMeta": {
+    "mssql": {
+      "optional": true
+    }
   }
 }

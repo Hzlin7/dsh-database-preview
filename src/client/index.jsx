@@ -16,7 +16,8 @@
 import React from 'react'
 import { parseFileAddress } from './address.js'
 import { ConnectionPage, FilePage } from './pages.jsx'
-import { createTranslator, DICTIONARIES, NS } from './i18n.js'
+import { copyFor, DICTIONARIES, NS, setTranslator } from './i18n.js'
+import { UpdatePanel } from './update.jsx'
 import { installStyles } from './styles.js'
 
 /** Identity of the resource type, and the key its body registers under. */
@@ -30,24 +31,6 @@ export const CONNECTIONS_KIND = 'database-connections'
 
 /** File suffixes this plugin claims. A narrower pattern at the extension band outranks the preview's fallback type. */
 export const DATABASE_EXTENSIONS = ['db', 'sqlite', 'sqlite3', 'db3', 's3db', 'sl3']
-
-/** Module-level translator, replaced by `apply` once the locale service is known. */
-let translate = createTranslator(undefined)
-
-/**
- * Props may carry a translator from the slot framework; prefer it so a language
- * change is picked up, and fall back to the module-level one.
- * @param props - component props.
- * @returns the translate function.
- */
-function copyFor(props) {
-  const injected = props?.t
-  if (typeof injected !== 'function') return translate
-  return (key, params) => {
-    const resolved = injected(key, params)
-    return typeof resolved === 'string' && resolved !== '' && resolved !== key ? resolved : translate(key, params)
-  }
-}
 
 /** Body of a database file tab. */
 function DatabaseFileBody(props) {
@@ -118,7 +101,7 @@ export function apply(ctx) {
       // Copy registration is optional; the local dictionaries already answer.
     }
   }
-  translate = createTranslator(locale)
+  const translate = setTranslator(locale)
 
   ctx.effect(() => installStyles(), 'dsh-database-preview: styles')
 
@@ -138,6 +121,20 @@ export function apply(ctx) {
         ctx.slots.register({ name: 'sidebar.right.pane.tab', key: CONNECTIONS_TYPE_ID, locale: NS }, ConnectionsBody),
       ),
     'dsh-database-preview: connections body',
+  )
+
+  // This bundle's own page in the plugin manager. The slot is keyed by the
+  // bundle's package name; registering under any other key fails the whole web
+  // entry at load rather than showing up in the wrong place.
+  ctx.effect(
+    () =>
+      ctx.slots.inject('plugins.bundle.config', () =>
+        ctx.slots.register(
+          { name: 'plugins.bundle.config', key: FILE_TYPE_ID, locale: NS, label: () => translate('update.title') },
+          UpdatePanel,
+        ),
+      ),
+    'dsh-database-preview: plugin page',
   )
 }
 

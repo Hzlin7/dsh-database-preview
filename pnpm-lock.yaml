@@ -8,9 +8,6 @@ importers:
 
   .:
     dependencies:
-      mssql:
-        specifier: ^11.0.1
-        version: 11.0.2
       mysql2:
         specifier: ^3.11.5
         version: 3.24.6(@types/node@26.6.5)
@@ -24,6 +21,9 @@ importers:
       jsdom:
         specifier: ^30.1.2
         version: 30.1.2
+      mssql:
+        specifier: ^11.0.1
+        version: 11.0.2
       react:
         specifier: ^18.3.1
         version: 18.3.1

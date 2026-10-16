@@ -58,7 +58,14 @@ after(() => {
   dom.window.close()
 })
 
-/** Apply a plugin instance and return its registered slot bodies keyed by type id. */
+/**
+ * Apply a plugin instance and return its registered slot bodies, keyed by slot
+ * name and key together.
+ *
+ * A keyed slot scopes its keys to the slot, so the plugin's package name is the
+ * key of both its tab body and its plugin-page body; keying this map by `key`
+ * alone would let one overwrite the other.
+ */
 function registeredBodies(instance = plugin) {
   const bodies = new Map()
   instance.apply({
@@ -67,7 +74,7 @@ function registeredBodies(instance = plugin) {
     get: () => undefined,
     slots: {
       register: (definition, body) => {
-        bodies.set(definition.key, body)
+        bodies.set(`${definition.name}:${definition.key}`, body)
         return () => {}
       },
       inject: (_name, factory) => factory(),
@@ -79,7 +86,7 @@ function registeredBodies(instance = plugin) {
 
 /** The file body for a Session file address. */
 function fileBodyFor(address) {
-  const body = registeredBodies().get('dsh-database-preview')
+  const body = registeredBodies().get('sidebar.right.pane.tab:dsh-database-preview')
   return { body, useTabInfo: () => ({ tab: { contentId: address } }) }
 }
 
@@ -310,7 +317,7 @@ test('an address that is not a Session file address explains itself', async () =
 
 test('the connection page lists saved profiles without their passwords', async () => {
   const bodies = registeredBodies()
-  const connectionsBody = bodies.get('dsh-database-preview/connections')
+  const connectionsBody = bodies.get('sidebar.right.pane.tab:dsh-database-preview/connections')
   stubFetch({
     'connections.list': {
       engines: ['sqlite', 'mysql', 'postgres', 'mssql'],
@@ -439,7 +446,7 @@ function supplierFor(primitives) {
 test('the shared control primitives are used whenever the shell seeds them', async () => {
   const primitives = makePrimitivesStub()
   const stubbed = await loadPluginWith(supplierFor(primitives))
-  const body = registeredBodies(stubbed).get('dsh-database-preview')
+  const body = registeredBodies(stubbed).get('sidebar.right.pane.tab:dsh-database-preview')
   const useTabInfo = () => ({ tab: { contentId: 'dsh-resource://file/session/s/data/shop.db' } })
   stubFetch({ 'db.catalog': CATALOG, 'db.table': TABLE })
   const root = await render(React.createElement(body, { useTabInfo, t }))
@@ -467,7 +474,7 @@ test('the shared control primitives are used whenever the shell seeds them', asy
 test('a dropdown opens the shared Menu list, not a platform popup', async () => {
   const primitives = makePrimitivesStub()
   const stubbed = await loadPluginWith(supplierFor(primitives))
-  const body = registeredBodies(stubbed).get('dsh-database-preview')
+  const body = registeredBodies(stubbed).get('sidebar.right.pane.tab:dsh-database-preview')
   const useTabInfo = () => ({ tab: { contentId: 'dsh-resource://file/session/s/data/shop.db' } })
   stubFetch({ 'db.catalog': CATALOG, 'db.table': TABLE })
   const root = await render(React.createElement(body, { useTabInfo, t }))
@@ -500,7 +507,7 @@ test('a dropdown opens the shared Menu list, not a platform popup', async () => 
 test('the pager actions are glyph-only chips on the dropdown surface', async () => {
   const primitives = makePrimitivesStub()
   const stubbed = await loadPluginWith(supplierFor(primitives))
-  const body = registeredBodies(stubbed).get('dsh-database-preview')
+  const body = registeredBodies(stubbed).get('sidebar.right.pane.tab:dsh-database-preview')
   const useTabInfo = () => ({ tab: { contentId: 'dsh-resource://file/session/s/data/shop.db' } })
   stubFetch({ 'db.catalog': CATALOG, 'db.table': TABLE })
   const root = await render(React.createElement(body, { useTabInfo, t }))
@@ -525,7 +532,7 @@ test('every class the components ask for is defined in the stylesheet', async ()
   // jsdom performs no layout, so a class name that no rule matches is invisible
   // to every other test here; this is the only guard against that silent loss.
   const used = new Set()
-  for (const file of ['browse.jsx', 'connections.jsx', 'controls.jsx', 'pages.jsx']) {
+  for (const file of ['browse.jsx', 'connections.jsx', 'controls.jsx', 'pages.jsx', 'update.jsx']) {
     const text = readFileSync(new URL(`../src/client/${file}`, import.meta.url), 'utf8')
     for (const match of text.matchAll(/\$\{PREFIX\}-([A-Za-z][\w]*)/g)) used.add(match[1])
   }
@@ -538,7 +545,7 @@ test('every class the components ask for is defined in the stylesheet', async ()
 
 test('a shell without the primitives still renders the panel', async () => {
   const bare = await loadPluginWith((id) => require(id))
-  const body = registeredBodies(bare).get('dsh-database-preview')
+  const body = registeredBodies(bare).get('sidebar.right.pane.tab:dsh-database-preview')
   const useTabInfo = () => ({ tab: { contentId: 'dsh-resource://file/session/s/data/shop.db' } })
   stubFetch({ 'db.catalog': CATALOG, 'db.table': TABLE })
   const root = await render(React.createElement(body, { useTabInfo, t }))

@@ -8,7 +8,7 @@
  */
 import { after, before, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -193,4 +193,114 @@ test('identifiers are quoted per engine and escape their own quote character', a
   assert.equal(clampInt(9999, 1, 500, 100), 500)
   assert.equal(clampInt('nonsense', 1, 500, 100), 100)
   assert.equal(clampInt(-5, 1, 500, 100), 1)
+})
+
+/** A package directory with the given name and version, for the update tests. */
+function makePackageDir(root, name, version) {
+  writeFileSync(join(root, 'package.json'), JSON.stringify({ name, version }))
+  return root
+}
+
+/** A fetch stand-in that answers one registry lookup. */
+function registryAnswer(status, body) {
+  return async () => ({ ok: status >= 200 && status < 300, status, json: async () => body })
+}
+
+test('versions are compared the way an update decision needs', async () => {
+  const { parseVersion, compareVersions } = await import('../lib/host/update.js')
+  assert.deepEqual(parseVersion('v1.2.3'), { major: 1, minor: 2, patch: 3, prerelease: null })
+  assert.deepEqual(parseVersion('1.2.3-beta.1').prerelease, 'beta.1')
+  assert.equal(parseVersion('1.2'), undefined)
+  assert.equal(parseVersion('not a version'), undefined)
+  assert.equal(parseVersion(undefined), undefined)
+
+  assert.equal(compareVersions('0.1.0', '0.1.0'), 0)
+  assert.equal(compareVersions('0.1.1', '0.1.0'), 1)
+  assert.equal(compareVersions('0.2.0', '0.1.9'), 1)
+  assert.equal(compareVersions('1.0.0', '0.9.9'), 1)
+  assert.equal(compareVersions('0.1.0', '0.1.1'), -1)
+  // A prerelease ranks below its own release, and identifiers compare per semver.
+  assert.equal(compareVersions('1.0.0-rc.1', '1.0.0'), -1)
+  assert.equal(compareVersions('1.0.0-rc.2', '1.0.0-rc.10'), -1)
+  assert.equal(compareVersions('1.0.0-alpha', '1.0.0-beta'), -1)
+  // Unparsable input must not be guessed at.
+  assert.equal(compareVersions('nonsense', '1.0.0'), undefined)
+})
+
+test('the install shape tells a linked checkout apart from an installed copy', async () => {
+  const { installShape } = await import('../lib/host/update.js')
+  assert.deepEqual(installShape(join(workDir, 'checkout')), { kind: 'link' })
+
+  const profile = join(workDir, 'profiles', 'desktop')
+  const installed = join(profile, 'node_modules', 'dsh-database-preview')
+  mkdirSync(installed, { recursive: true })
+  assert.deepEqual(installShape(installed), { kind: 'copy', profileDir: profile, profileName: 'desktop' })
+
+  // pnpm's isolated layout keeps the real files one level deeper; the profile is
+  // still the last `profiles/<name>/node_modules` ancestor.
+  const pnpm = join(profile, 'node_modules', '.pnpm', 'dsh-database-preview@0.1.0', 'node_modules', 'dsh-database-preview')
+  mkdirSync(pnpm, { recursive: true })
+  assert.deepEqual(installShape(pnpm), { kind: 'copy', profileDir: profile, profileName: 'desktop' })
+})
+
+test('an unpublished package reports the registry gap instead of "up to date"', async () => {
+  const { updateStatus } = await import('../lib/host/update.js')
+  const dir = makePackageDir(mkdtempSync(join(workDir, 'unpublished-')), 'probe-unpublished', '0.1.0')
+  const status = await updateStatus({ packageDir: dir, fetchImpl: registryAnswer(404, {}) })
+  assert.equal(status.ok, true)
+  assert.deepEqual(status.latest, { known: false, reason: 'not-published' })
+  // Unknown is not the same answer as "current", so no verdict is invented.
+  assert.equal(status.updateAvailable, undefined)
+  assert.equal(status.runningVersion, '0.1.0')
+  assert.equal(status.canDelegate, false, 'a directory outside node_modules is a checkout')
+})
+
+test('an update is offered only when the registry has a strictly newer version', async () => {
+  const { updateStatus } = await import('../lib/host/update.js')
+  const newer = makePackageDir(mkdtempSync(join(workDir, 'newer-')), 'probe-newer', '0.1.0')
+  const ahead = await updateStatus({ packageDir: newer, fetchImpl: registryAnswer(200, { version: '0.2.0' }) })
+  assert.equal(ahead.updateAvailable, true)
+
+  const same = makePackageDir(mkdtempSync(join(workDir, 'same-')), 'probe-same', '0.1.0')
+  const level = await updateStatus({ packageDir: same, fetchImpl: registryAnswer(200, { version: '0.1.0' }) })
+  assert.equal(level.updateAvailable, false)
+
+  // A registry that answers with something older must never offer a downgrade.
+  const older = makePackageDir(mkdtempSync(join(workDir, 'older-')), 'probe-older', '0.2.0')
+  const behind = await updateStatus({ packageDir: older, fetchImpl: registryAnswer(200, { version: '0.1.0' }) })
+  assert.equal(behind.updateAvailable, false)
+})
+
+test('a failed registry lookup is reported, not swallowed', async () => {
+  const { updateStatus } = await import('../lib/host/update.js')
+  const dir = makePackageDir(mkdtempSync(join(workDir, 'offline-')), 'probe-offline', '0.1.0')
+  const refused = await updateStatus({
+    packageDir: dir,
+    fetchImpl: async () => {
+      throw new Error('getaddrinfo ENOTFOUND registry.npmjs.org')
+    },
+  })
+  assert.equal(refused.latest.known, false)
+  assert.match(refused.latest.reason, /ENOTFOUND/)
+  assert.equal(refused.updateAvailable, undefined)
+})
+
+test('a newer version on disk than the loaded code is reported as restart-pending', async () => {
+  const { updateStatus } = await import('../lib/host/update.js')
+  const dir = makePackageDir(mkdtempSync(join(workDir, 'pending-')), 'probe-pending', '0.2.0')
+  const status = await updateStatus({ packageDir: dir, runningVersion: '0.1.0', fetchImpl: registryAnswer(200, { version: '0.2.0' }) })
+  assert.equal(status.diskVersion, '0.2.0')
+  assert.equal(status.runningVersion, '0.1.0')
+  assert.equal(status.pendingRestart, true)
+  assert.equal(status.updateAvailable, false, 'the target already sits on disk')
+})
+
+test('the shipped package reports its own name and version', async () => {
+  const { updateStatus } = await import('../lib/host/update.js')
+  const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
+  const status = await updateStatus({ fetchImpl: registryAnswer(404, {}) })
+  assert.equal(status.ok, true)
+  assert.equal(status.packageName, manifest.name)
+  assert.equal(status.diskVersion, manifest.version)
+  assert.equal(status.runningVersion, manifest.version)
 })

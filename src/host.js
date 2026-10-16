@@ -26,6 +26,16 @@ import {
   writeStore,
 } from './host/store.js'
 import { adapterFor } from './host/engines.js'
+import { PACKAGE_DIR, readManifest, updateStatus } from './host/update.js'
+
+/**
+ * The version whose code this process actually loaded.
+ *
+ * Captured once, before any update can replace the manifest on disk: after an
+ * update the two differ, and only keeping both lets the panel say "installed,
+ * restart to apply" instead of quietly reporting the new version as running.
+ */
+const RUNNING_VERSION = readManifest(PACKAGE_DIR)?.version
 
 /** Route prefix claimed on the web server. */
 const ROUTE_PREFIX = '/_dsh/dsh-database-preview'
@@ -282,6 +292,13 @@ export const ROUTES = {
         : await adapterFor(target.engine).table(target.profile, selection)
     return { target: publicTarget(target), page, pageSize, offset, table, ...result }
   },
+  /**
+   * Version facts for this plugin's update surface.
+   *
+   * Read-only: the update itself is delegated to the Market's public API by the
+   * browser half, or handed to the user as a command. Nothing here writes.
+   */
+  'update.status': async () => updateStatus({ runningVersion: RUNNING_VERSION }),
 }
 
 /**

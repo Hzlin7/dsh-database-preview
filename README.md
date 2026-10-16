@@ -27,19 +27,47 @@ DeepSeek Harness 的数据库**只读预览**插件：在右侧边栏的文件�
 ## 安装
 
 ```powershell
-# 换成本仓库的实际路径
+# 从 npm（发布后可用）
+dsh plugin --profile <profile> add dsh-database-preview
+
+# 或直接从 GitHub，无需发布
+dsh plugin --profile <profile> add github:Hzlin7/dsh-database-preview
+
+# 或本地路径（开发）
 dsh plugin --profile <profile> add <path-to>/dsh-database-preview
 ```
 
-DSH 的插件管理器会把它加为 `link:` 依赖，并把 `dsh-database-preview` 追加进 profile 的 `dsh.profile.bundles`。**HMR 会在该列表变化时实时重组**，所以插件当场生效，不需要重启 DSH（改代码后另见下文）。
+DSH 的插件管理器会把它追加进 profile 的 `dsh.profile.bundles`。**HMR 会在该列表变化时实时重组**，所以插件当场生效，不需要重启 DSH（改代码后另见下文）。也可以在 Web 界面的**插件**页里填上面任一种来源。
 
-也可以在 Web 界面的**插件**页里按路径安装。
+**从 git 或 tarball 安装不需要构建**：`lib/` 是随仓库提交的产物，包里也没有 `prepare` 脚本——否则安装时会被拉取 esbuild 等开发依赖（约 10 MB）只为构建一次。
 
 卸载：
 
 ```powershell
 dsh plugin --profile <profile> remove dsh-database-preview
 ```
+
+### SQL Server 要额外装一个驱动
+
+`mssql` 是**可选依赖**，不在默认安装里。它的传递依赖（`tedious` → `@azure/identity` → `@azure/msal-*`）约 **48 MB**，而它只是四个引擎中的一个——默认装三个驱动是 52 MB，只装 `mysql2` + `pg` 是 4.4 MB。所以只有需要 SQL Server 的人才付这个体积：
+
+```powershell
+dsh plugin --profile <profile> add mssql
+```
+
+缺少驱动时不会被静默忽略，错误信息会点名：`the "mssql" driver is not available to this plugin: …`。
+
+## 自更新
+
+插件**不重写自己的文件**。它有运行时依赖，版本之间依赖树可能变化，那种更新必须走真正的包管理器安装；而 profile 的 `package.json` / `pnpm-lock.yaml` 属于插件管理器，不该由插件代写。
+
+所以更新是**委托**的：
+
+- **装了 `dshmarket`** → 在插件页里点「检查更新 / 更新到 vX」。实际安装由 [dshmarket 的公开更新 API v1](https://github.com/dsh-market/dsh-market) 执行，它会先发现（`/dsh-market/api/v1/capabilities`）、再检查、再启动操作并回报进度、失败码与回滚。该 API 目前标记为 **beta**。
+- **没装 `dshmarket`** → 面板给出确切的一条命令（`dsh plugin --profile <profile> add dsh-database-preview`），或者你按老办法卸载重装。
+- **`link:` 安装** → 面板明确拒绝一键更新。它指向你自己的源码目录，改写那里等于改你的工作副本；那种安装的更新方式是 `git pull` + 重新构建。
+
+面板还区分**运行中版本**与**磁盘版本**：更新替换的是磁盘文件，而内存里跑的仍是旧代码，所以更新完成后会显示「待重启」而不是假装已经生效。
 
 ## 连接信息与密码
 
@@ -82,20 +110,25 @@ dsh plugin --profile <profile> remove dsh-database-preview
 ```powershell
 pnpm install
 pnpm run build      # src/ -> lib/（客户端半打成模块加载器工厂包）
-pnpm test           # 32 项：宿主逻辑 / 两个入口的接线 / 真实 DOM 渲染
+pnpm test           # 39 项：宿主逻辑 / 更新判定 / 两个入口的接线 / 真实 DOM 渲染
 pnpm run sample     # 生成 examples/shop.db 用于手动验证
 ```
+
+**改完源码必须提交 `lib/`。** `lib/` 是随仓库分发的产物（DSH 加载的就是它，git / tarball 安装不构建），只提交 `src/` 的话，使用者装到的仍是旧产物，而且不会有任何报错提醒你。
 
 ```
 src/host.js                宿主入口：路由、目标解析、只读守卫
 src/host/engines.js        四个引擎的适配层
 src/host/sqlite-worker.js  SQLite 读取（worker 线程，可超时终止）
 src/host/store.js          连接档案持久化
+src/host/update.js         版本比较、安装形态识别、registry 查询
 src/host/util.js           JSON 安全取值、标识符转义
-src/client/index.jsx       客户端入口：注册两个标签类型
+src/client/index.jsx       客户端入口：注册两个标签类型 + 插件页
 src/client/controls.jsx    控件层：解析内核原语 + 无原语时的兜底
 src/client/browse.jsx      数据浏览器
 src/client/connections.jsx 连接管理页
+src/client/update.jsx      插件页的版本与更新面板
+src/client/i18n.js         文案（共享翻译器）
 src/client/styles.js       样式（模板字符串）
 scripts/build.mjs          构建（暂存目录 + 原子替换）
 tests/                     三层测试
